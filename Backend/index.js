@@ -8,6 +8,24 @@ const app = express();
 app.use(cors({}));
 app.use(express.json());
 
+// cache the DB connection across serverless invocations
+let isConnected = false;
+async function connectDB() {
+  if (isConnected) return;
+  await mongoose.connect(process.env.MONGO_URL);
+  isConnected = true;
+  console.log("Connected!");
+}
+app.use(async (req, res, next) => {
+  try {
+    await connectDB();
+    next();
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({ error: "DB connection failed" });
+  }
+});
+
 app.get("/", (req, res) => {
   UserModel.find({})
     .then((user) => {
@@ -27,24 +45,20 @@ app.post("/createUser", (req, res) => {
       res.json(err);
     });
 });
+
 app.get("/getUser/:id", (req, res) => {
-  console.log("Params:", req.params);
-
   const id = req.params.id;
-
   UserModel.findById(id)
     .then((user) => {
-      console.log(user);
       res.json(user);
     })
     .catch((err) => {
-      console.log(err);
       res.json(err);
     });
 });
+
 app.put("/updateUser/:id", (req, res) => {
   const id = req.params.id;
-
   UserModel.findByIdAndUpdate(
     id,
     {
@@ -55,14 +69,13 @@ app.put("/updateUser/:id", (req, res) => {
     { new: true },
   )
     .then((user) => {
-      console.log(user);
       res.json(user);
     })
     .catch((err) => {
-      console.log(err);
       res.json(err);
     });
 });
+
 app.delete("/deleteUser/:id", (req, res) => {
   const id = req.params.id;
   UserModel.findByIdAndDelete(id)
@@ -73,16 +86,11 @@ app.delete("/deleteUser/:id", (req, res) => {
       res.json(err);
     });
 });
-mongoose
-  .connect(process.env.MONGO_URL)
-  .then(() => {
-    console.log("Connected!");
-    console.log("Database:", mongoose.connection.name);
-    console.log("Host:", mongoose.connection.host);
-  })
-  .catch((err) => console.log(err));
-app.listen(5000, () => {
-  console.log("server is runing");
-});
 
-// module.exports = app;
+if (process.env.NODE_ENV !== "production") {
+  app.listen(5000, () => {
+    console.log("server is runing");
+  });
+}
+
+module.exports = app;
